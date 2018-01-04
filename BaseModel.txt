@@ -1,0 +1,520 @@
+﻿package cn.rtdata.core;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import cn.rtdata.kit.ConvertKit;
+import cn.rtdata.kit.render.ITemplate;
+import cn.rtdata.kit.xml.SqlXmlKit;
+
+import com.jfinal.kit.StrKit;
+import com.jfinal.plugin.activerecord.Model;
+import com.jfinal.plugin.activerecord.Table;
+import com.jfinal.plugin.activerecord.TableMapping;
+
+@SuppressWarnings("serial")
+public abstract class BaseModel<M extends Model<M>> extends Model<M> {
+//	protected static String sql_select = "select * from #tableName# where 1=1 ";
+	
+	protected void initialize(){
+//		sql_select.replace("#tableName#", getTableName());
+	}
+	
+	/**
+	 * 初始化操作,设置对象键值
+	 * 增加一些额外的操作
+	 * 
+	 */
+	public BaseModel(){
+		initialize();
+		
+//		if(hasParent){
+////			setSqlSelectByParent();
+////			setSqlSelectByParentRoot();
+//		}
+	}
+	
+	protected boolean hasParentId(){
+		if (StrKit.notBlank(sql_select_by_parent)
+				&& getTable().hasColumnLabel(column_parent_id)) {
+			hasParent = true;
+		}
+		return hasParent;
+	}
+
+	public List<M> getRoot() {
+		List<M> result = new ArrayList<M>();
+		if(StrKit.isBlank(sql_select_by_parent_root)){
+			setSqlSelectChildren();
+		}
+		
+		if (StrKit.notBlank(sql_select_by_parent_root)) {
+			result = find(sql_select_by_parent_root);
+		}
+		return result;
+	}
+
+	public List<M> getChildren(String key) {
+		List<M> result = new ArrayList<M>();
+
+		if(StrKit.isBlank(sql_select_by_parent)){
+			setSqlSelectChildren();
+		}
+		
+		if (StrKit.notBlank(sql_select_by_parent)) {
+			result = find(sql_select_by_parent, key);
+		}
+
+		return result;
+	}
+
+	/**
+	 * 根据子节点ID，获取其父节点
+	 * @param key
+	 * @return
+	 */
+	public M getParent(String key) {
+		if (hasParentId()) {
+			M child = findById(key);
+			String parentId = child.getStr(column_parent_id);
+			if (parentId != null) {
+				return findById(parentId);
+			}
+		}
+		return null;
+	}
+	
+	/**
+	 * 获取该对象的父节点
+	 * 
+	 * @return
+	 */
+	public M getParent(){
+		if (hasParentId()) {
+			String parentId = getStr(column_parent_id);
+			if (parentId != null) {
+				return findById(parentId);
+			}
+		}
+		return null;
+	}
+
+	public List<M> getChildren() {
+		return getChildren(getPKValue());
+	}
+
+	/**
+	 * 获取表映射对象
+	 * 
+	 * @return
+	 */
+	protected Table getTable() {
+		return TableMapping.me().getTable(getClass());
+	}
+
+	/**
+	 * 获取表名称
+	 * 
+	 * @return
+	 */
+	protected String getTableName() {
+		return getTable().getName();
+	}
+
+	/**
+	 * 获取主键名称
+	 * 
+	 * @return
+	 */
+	public String[] getPKNameArr() {
+		return getTable().getPrimaryKey();
+	}
+
+	/**
+	 * 获取主键名称
+	 * 
+	 * @return
+	 */
+	public String getPKNameStr() {
+		String[] pkArr = getPKNameArr();
+		if (pkArr.length == 1) {
+			return pkArr[0];
+		} else {
+			String pk = "";
+			for (String pkName : pkArr) {
+				pk += pkName + ",";
+			}
+			return pk;
+		}
+
+	}
+
+	/**
+	 * 获取主键值：非复合主键
+	 * 
+	 * @return
+	 */
+	public String getPKValue() {
+		String[] pkNameArr = getTable().getPrimaryKey();
+		if (pkNameArr.length == 1) {
+			return this.getStr(pkNameArr[0]);
+		} else {
+			String pk = "";
+			for (String pkName : pkNameArr) {
+				pk += this.get(pkName) + ",";
+			}
+			return pk;
+		}
+	}
+
+	/**
+	 * 获取主键值：复合主键
+	 * 
+	 * @return
+	 */
+	public List<Object> getPKValueList() {
+		String[] pkNameArr = getTable().getPrimaryKey();
+
+		List<Object> pkValueList = new ArrayList<Object>();
+		for (String pkName : pkNameArr) {
+			pkValueList.add(this.get(pkName));
+		}
+
+		return pkValueList;
+	}
+
+	/**
+	 * 覆盖父级get和set方法，将异常排除
+	 * 
+	 */
+	
+	@SuppressWarnings("unchecked")
+	@Override
+	public <T> T get(String attr) {
+		Object obj = super.getAttrs().get(attr);
+		if(obj == null){
+			return null;
+		}
+		if(obj instanceof String){
+			return (T)((String) obj).trim();
+		}
+		return super.get(attr);
+	}
+
+	@Override
+	public String getStr(String attr) {
+		return ConvertKit.toString(super.getAttrs().get(attr), "");
+	}
+
+	@Override
+	public Long getLong(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Long.class);
+	}
+
+	@Override
+	public Double getDouble(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Double.class);
+	}
+	
+	@Override
+	public Boolean getBoolean(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Boolean.class);
+	}
+	
+	@Override
+	public Integer getInt(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Integer.class);
+	}
+	
+	@Override
+	public BigDecimal getBigDecimal(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), BigDecimal.class);
+	}
+	
+	@Override
+	public Time getTime(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Time.class);
+	}
+	
+	@Override
+	public Float getFloat(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Float.class);
+	}
+	
+	@Override
+	public BigInteger getBigInteger(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), BigInteger.class);
+	}
+	
+	@Override
+	public byte[] getBytes(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), byte[].class);
+	}
+	
+	@Override
+	public Timestamp getTimestamp(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Timestamp.class);
+	}
+
+	/**
+	 * 针对Oracle做特殊处理
+	 * 
+	 * @param attr
+	 * @return
+	 */
+	@Override
+	public Date getDate(String attr) {
+		return ConvertKit.convert(super.getAttrs().get(attr), Date.class);
+	}
+	
+	/**
+	 * 动态查询
+	 * 条件使用Map定义，Key为字段名称，Value为参数值
+	 * 
+	 * @param conditions 查询条件，Map对象，Key为字段名称，Value为参数值
+	 * @param orders 排序条件，字符串数组，格式为：columnName desc/asc
+	 * 
+	 * @return
+	 */
+	public List<M> findDynamicCondition(final Map<String, Object> conditions, String... orders){
+		
+		Map<String, Object> sqlMap = new HashMap<String, Object>();
+		sqlMap.put("table", getTableName());
+		
+		Collection<Object> paras = new ArrayList<Object>();
+		if(conditions != null&&!conditions.isEmpty()){
+			Set<String> keys = conditions.keySet();
+			sqlMap.put("conditions", keys);
+			
+			paras = conditions.values();
+		}
+		
+		if(orders != null && orders.length>0){
+			sqlMap.put("column_order_ids", orders);
+		}
+		String sql = getSqlByBeetl(sqlId_select, sqlMap);
+		
+		return find(sql, paras.toArray());
+	}
+	
+	public List<M> findAll(){
+		return findDynamicCondition(null);
+	}
+
+
+	/**
+	 * 字段描述：版本号 字段类型 ：bigint
+	 */
+	public static final String column_version = "version";
+
+	/**
+	 * 字段描述：状态 字段类型 ：varchar
+	 */
+	public static final String column_status = "status";
+
+	/**
+	 * 字段描述：创建时间 字段类型 ：date
+	 */
+	public static final String column_createAt = "createAt";
+
+	/**
+	 * 字段描述：创建人ID 字段类型 ：createBy
+	 */
+	public static final String column_createBy = "createBy";
+	
+	public String column_parent_id = "parentId";
+	
+	public String column_order_id = "";
+	
+
+	/**
+	 * sqlId : platform.baseModel.select
+	 * 描述：通用查询
+	 */
+	public static final String sqlId_select = "platform.baseModel.select";
+
+	/**
+	 * sqlId : platform.baseModel.update
+	 * 描述：通用更新
+	 */
+	public static final String sqlId_update = "platform.baseModel.update";
+
+	/**
+	 * sqlId : platform.baseModel.delete
+	 * 描述：通用删除
+	 */
+	public static final String sqlId_delete = "platform.baseModel.delete";
+
+	/**
+	 * sqlId : platform.baseModel.deleteIn
+	 * 描述：通用删除
+	 */
+	public static final String sqlId_deleteIn = "platform.baseModel.deleteIn";
+
+	/**
+	 * sqlId : platform.baseModel.deleteOr
+	 * 描述：通用删除
+	 */
+	public static final String sqlId_deleteOr = "platform.baseModel.deleteOr";
+
+	/**
+	 * sqlId : platform.baseModel.deleteOr
+	 * 描述：通用删除
+	 */
+	public static final String sqlId_selectRootChildren = "platform.baseModel.selectRootChildren";
+
+	/**
+	 * sqlId : platform.baseModel.deleteOr
+	 * 描述：通用删除
+	 */
+	public static final String sqlId_selectChildren = "platform.baseModel.selectChildren";
+	
+	/**
+     * 获取SQL，固定SQL
+     * @param sqlId
+     * @return
+     */
+	protected String getSql(String sqlId){
+		return SqlXmlKit.getSql(sqlId);
+	}
+	
+    /**
+     * 获取SQL，动态SQL，使用Beetl解析
+     * @param sqlId
+     * @param param
+     * @return
+     */
+	protected String getSqlByBeetl(String sqlId, Map<String, Object> param){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_beetl);
+    }
+    
+    /**
+     * 获取SQL，动态SQL，使用Beetl解析
+     * @param sqlId 
+     * @param param 查询参数
+     * @param list 用于接收预处理的值
+     * @return
+     */
+	protected String getSqlByBeetl(String sqlId, Map<String, Object> param, LinkedList<Object> list){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_beetl, list);
+    }
+
+    /**
+     * 获取SQL，动态SQL，使用FreeMarker解析
+     * @param sqlId
+     * @param param
+     * @return
+     */
+	protected String getSqlByFreeMarker(String sqlId, Map<String, Object> param){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_freeMarker);
+    }
+    
+    /**
+     * 获取SQL，动态SQL，使用FreeMarker解析
+     * @param sqlId 
+     * @param param 查询参数
+     * @param list 用于接收预处理的值
+     * @return
+     */
+	protected String getSqlByFreeMarker(String sqlId, Map<String, Object> param, LinkedList<Object> list){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_freeMarker, list);
+    }
+
+    /**
+     * 获取SQL，动态SQL，使用Velocity解析
+     * @param sqlId
+     * @param param
+     * @return
+     */
+	protected String getSqlByVelocity(String sqlId, Map<String, Object> param){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_velocity);
+    }
+    
+    /**
+     * 获取SQL，动态SQL，使用Velocity解析
+     * @param sqlId 
+     * @param param 查询参数
+     * @param list 用于接收预处理的值
+     * @return
+     */
+	protected String getSqlByVelocity(String sqlId, Map<String, Object> param, LinkedList<Object> list){
+    	return SqlXmlKit.getSql(sqlId, param, ITemplate.sql_renderType_velocity, list);
+    }
+
+	/**
+	 * Sql语句，根据父级ID进行查询
+	 */
+	private String sql_select_by_parent;
+	private String sql_select_by_parent_root;
+
+	protected boolean hasParent=false;
+	
+	protected void setHasParent(boolean has){
+		hasParent = has;
+	}
+
+	protected void setColumnParentId(String parentId) {
+		column_parent_id = parentId;
+	}
+	
+	protected void setColumnOrderId(String orderId){
+		column_order_id = orderId;
+	}
+	
+	protected void setSqlSelectChildren(){
+		if(hasParent){
+			Map<String, Object> param = new HashMap<String, Object>();
+			param.put("table", getTableName());
+			param.put("column_parent_id", column_parent_id);
+			param.put("column_order_id", column_order_id);
+			sql_select_by_parent_root = getSqlByBeetl(sqlId_selectRootChildren, param);
+			sql_select_by_parent = getSqlByBeetl(sqlId_selectChildren, param);
+		}
+	}
+	
+//	protected void setSqlSelectByParentRoot(){
+//		if(StrKit.isBlank(sql_select_by_parent_root) && hasParent){
+//			Map<String, Object> param = new HashMap<String, Object>();
+//			param.put("table", getTableName());
+//			param.put("column_parent_id", column_parent_id);
+//			param.put("column_order_id", column_order_id);
+//			
+//			sql_select_by_parent_root = getSqlByBeetl(sqlId_selectRootChildren, param);
+//		}
+//		
+//		//return sql_select_by_parent_root;
+//	}
+//	
+//	protected void setSqlSelectByParent(){
+//		if(StrKit.isBlank(sql_select_by_parent) && hasParent){
+//			Map<String, Object> param = new HashMap<String, Object>();
+//			param.put("table", getTableName());
+//			param.put("column_parent_id", column_parent_id);
+//			param.put("column_order_id", column_order_id);
+//			
+//			sql_select_by_parent = getSqlByBeetl(sqlId_selectChildren, param);
+//		}
+//		
+//		//return sql_select_by_parent;
+//		
+////		String sql = null;
+////		if(StrKit.isBlank(sql) && hasParent){
+////			sql = "select * from " + getTableName() + " where " + column_parent_id + " =? ";
+////
+////			if(StrKit.notBlank(column_order_id)){
+////				sql = " order by " + column_order_id;
+////			}
+////		}
+////		sql_select_by_parent = sql;
+//	}
+}
